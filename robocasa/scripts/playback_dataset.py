@@ -74,21 +74,25 @@ def playback_trajectory_with_env(
         print(colored("Running episode...", "yellow"))
 
     # sped_up_actions = # Slow down the trajectory by a factor of 5
-    actions = smoothe_trajectory(actions, cutoff_ratio=0.1)
-    # arm_actions = actions[:, :7]
-    # # pdb.set_trace()
-    # slowed_trajectory = slow_down_trajectory(arm_actions, factor=2)
-    # # stack [0,0,0,0,-1] for the dimension of the new slowed trajectory
-    # zero_base = np.stack([[0, 0, 0, 0, -1]] * slowed_trajectory.shape[0], axis=0)
-    # slowed_trajectory = np.concatenate([slowed_trajectory, zero_base], axis=1)  # concatenate the zero base to the slowed trajectory
-    # actions = slowed_trajectory
+    # actions = smoothe_trajectory(actions, cutoff_ratio=0.1)
+    # pdb.set_trace()
+    arm_actions = actions[:, :7]
+    # pdb.set_trace()
+    slowed_trajectory = slow_down_trajectory(arm_actions, factor=2)
+    # stack [0,0,0,0,-1] for the dimension of the new slowed trajectory
+    zero_base = np.stack([[0, 0, 0, 0, -1]] * slowed_trajectory.shape[0], axis=0)
+    slowed_trajectory = np.concatenate([slowed_trajectory, zero_base], axis=1)  # concatenate the zero base to the slowed trajectory
+    actions = slowed_trajectory
     traj_len = actions.shape[0]  # update trajectory length after slowing down
+    cumulative_xyz = np.zeros(3)
     for i in range(traj_len):
         start = time.time()
         #
 
         if action_playback:
             env.step(actions[i])
+            cumulative_xyz += actions[i][:3]
+            print("cumulative_xyz", cumulative_xyz)
             if i < traj_len - 1:
                 # check whether the actions deterministically lead to the same recorded states
                 state_playback = np.array(env.sim.get_state().flatten())
@@ -198,6 +202,11 @@ def get_env_metadata_from_dataset(dataset_path, ds_format="robomimic"):
     dataset_path = os.path.expanduser(dataset_path)
     f = h5py.File(dataset_path, "r")
     if ds_format == "robomimic":
+        # pdb.set_trace()
+        # if "env_args" in f["data"].attrs:
+        #     env_meta = json.loads(f["data"].attrs["env_args"])
+        # else:
+        #     print()
         env_meta = json.loads(f["data"].attrs["env_args"])
     else:
         raise ValueError
@@ -445,11 +454,11 @@ def interpolate_relative_rotations(quaternions, num_steps_between=10):
 
 def slow_down_trajectory(actions, factor=2):
     new_trajectory = []
-
-    for i in range(len(actions) - 1):
+    cumulative_xyz = np.zeros(3)
+    for i in range(len(actions)):
         # Get the two consecutive actions
         action1 = actions[i]
-        action2 = actions[i + 1]
+        # action2 = actions[i + 1]
 
         # Insert the original action
         # new_trajectory.append(action1)
@@ -465,36 +474,56 @@ def slow_down_trajectory(actions, factor=2):
         #     new_trajectory.append(interpolated_action)
         # new_trajectory.append(list(interpolated_action))
 
-        quat1 = R.from_rotvec(action1[3:6]).as_quat()
-        quat2 = R.from_rotvec(action2[3:6]).as_quat()
-        identity = R.from_quat([[0, 0, 0, 1]])
-        quat1 = R.from_quat(quat1)
-        # pdb.set_trace()
-        slerp = Slerp([0, 1], R.concatenate([identity, quat1]))
-        partial_rot = slerp([1 / factor])
-        scaled_quat = partial_rot.as_rotvec()[0]
-        interpolated_action[
-            3:6
-        ] = scaled_quat  # set the rotation part to the scaled quaternion
+        # quat1 = R.from_rotvec(action1[3:6]).as_quat()
+        # # quat2 = R.from_rotvec(action2[3:6]).as_quat()
+        # identity = R.from_quat([[0, 0, 0, 1]])
+        # quat1 = R.from_quat(quat1)
+        # # pdb.set_trace()
+        # slerp = Slerp([0, 1], R.concatenate([identity, quat1]))
+        # partial_rot = slerp([1 / factor])
+        # scaled_quat = partial_rot.as_rotvec()[0]
+        # interpolated_action[
+        #     3:6
+        # ] = scaled_quat  # set the rotation part to the scaled quaternion
         # interpolated_quats = interpolate_relative_rotations([quat1, quat2], num_steps_between=factor)
         # convert back to rotation vector
         # interpolated_quats = R.from_quat(interpolated_quats).as_rotvec
         # # convert to numpy array
         # interpolated_quats = np.array(interpolated_quats)
         # pdb.set_trace()
-        for _ in range(factor - 1):  # Insert (factor-1) interpolated actions
+        cumulative_action = np.zeros_like(interpolated_action)
+        for _ in range(factor):  # Insert (factor-1) interpolated actions
             # tmp_interpolated_action = interpolated_action
             # # set the rotation part to the interpolated quaternion
             # tmp_interpolated_action[3:6] = interpolated_quats[_]
+            if sum(np.abs(interpolated_action[:3])) < 0.01:
+                # add bit forward motion to x and y
+                tmp_interpolated_action = np.copy(interpolated_action)
+                tmp_interpolated_action[0] += 0.1
+                tmp_interpolated_action[1] += 0.1
+                interpolated_action = tmp_interpolated_action
             # new_trajectory.append(tmp_interpolated_action)
-            new_trajectory.append(interpolated_action)
+            if cumulative_xyz[2] < -26 and i < len(actions)/2:
+                import copy
+                tmp_interpolated_action = copy.deepcopy(interpolated_action)
+                tmp_interpolated_action[2] = 0
+                new_trajectory.append(tmp_interpolated_action)
+                cumulative_action += tmp_interpolated_action
+                cumulative_xyz += tmp_interpolated_action[:3]
+            else:
+                new_trajectory.append(interpolated_action)
+                cumulative_action += interpolated_action
+                cumulative_xyz += interpolated_action[:3]
+            print("cumulative_xyz", cumulative_xyz)
             # Identity rotation (no rotation)
+        # the final relative action added should be the initial action minus the cumulative action to account for the numerical error
+        # new_trajectory.append(action1 - cumulative_action)
 
         # pdb.set_trace()
         # new_trajectory.extend(list(interpolated_quats))
 
     # Append the last action
-    new_trajectory.append(actions[-1])
+    # new_trajectory.append(actions[-1])
 
     # Compute relative actions (difference between consecutive steps)
     # new_trajectory = [new_trajectory[i+1] - new_trajectory[i] for i in range(len(new_trajectory) - 1)]
@@ -547,7 +576,7 @@ def fft_smooth_trajectory(relative_xyz, cutoff_ratio=0.1):
     return smoothed
 
 
-def smoothe_trajectory(actions, cutoff_ratio=0.1):
+def smoothe_trajectory_old(actions, cutoff_ratio=0.1):
     xyz = actions[:, :3]  # extract xyz positions
     smoothed_xyz = fft_smooth_trajectory(
         xyz, cutoff_ratio=cutoff_ratio
@@ -555,6 +584,23 @@ def smoothe_trajectory(actions, cutoff_ratio=0.1):
     new_actions = np.concatenate(
         [smoothed_xyz, actions[:, 3:]], axis=1
     )  # concatenate smoothed xyz with other action parts
+
+    return new_actions
+
+def smoothe_trajectory(actions, cutoff_ratio=0.1):
+    xyz = actions[:, :3]  # extract xyz positions
+    absolute_xyz = np.cumsum(xyz, axis=0)
+    from scipy.signal import savgol_filter
+
+    # window_length must be odd and > polyorder
+    smoothed_xyz = savgol_filter(absolute_xyz, window_length=11, polyorder=3, axis=0)
+    # convert back to relative actions
+    smoothed_relative_xyz = np.diff(smoothed_xyz, axis=0, prepend=smoothed_xyz[0:1, :])
+
+    new_actions = np.concatenate(
+        [smoothed_relative_xyz, actions[:, 3:]], axis=1
+    )  # concatenate smoothed xyz with other action parts
+
 
     return new_actions
 

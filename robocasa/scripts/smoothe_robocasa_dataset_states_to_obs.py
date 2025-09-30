@@ -70,12 +70,18 @@ def fft_smooth_trajectory(relative_xyz, cutoff_ratio=0.1):
 
 def smoothe_trajectory(actions, cutoff_ratio=0.1):
     xyz = actions[:, :3]  # extract xyz positions
-    smoothed_xyz = fft_smooth_trajectory(
-        xyz, cutoff_ratio=cutoff_ratio
-    )  # smooth xyz positions
+    absolute_xyz = np.cumsum(xyz, axis=0)
+    from scipy.signal import savgol_filter
+
+    # window_length must be odd and > polyorder
+    smoothed_xyz = savgol_filter(absolute_xyz, window_length=11, polyorder=3, axis=0)
+    # convert back to relative actions
+    smoothed_relative_xyz = np.diff(smoothed_xyz, axis=0, prepend=smoothed_xyz[0:1, :])
+
     new_actions = np.concatenate(
-        [smoothed_xyz, actions[:, 3:]], axis=1
+        [smoothed_relative_xyz, actions[:, 3:]], axis=1
     )  # concatenate smoothed xyz with other action parts
+
 
     return new_actions
 
@@ -106,7 +112,7 @@ def extract_trajectory(
     original_actions = actions.copy()  # keep original actions for later use
     arm_actions = actions[:, :7]
     # pdb.set_trace()
-    slowed_trajectory = smoothe_trajectory(arm_actions, factor=5)
+    slowed_trajectory = smoothe_trajectory(arm_actions, cutoff_ratio=0.1)
     # stack [0,0,0,0,-1] for the dimension of the new slowed trajectory
     zero_base = np.stack([[0, 0, 0, 0, -1]] * slowed_trajectory.shape[0], axis=0)
     slowed_trajectory = np.concatenate(
@@ -802,7 +808,7 @@ def dataset_states_to_obs_multiprocessing(args):
                     :-5
                 ] + "_gentex_im{}.hdf5".format(image_suffix)
             else:
-                output_name = os.path.basename(args.dataset)[:-5] + "_im{}.hdf5".format(
+                output_name = os.path.basename(args.dataset)[:-5] + "_smoothe_im{}.hdf5".format(
                     image_suffix
                 )
 

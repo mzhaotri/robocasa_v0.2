@@ -27,11 +27,11 @@ from scipy.spatial.transform import Slerp
 
 def slow_down_trajectory(actions, factor=2):
     new_trajectory = []
-
-    for i in range(len(actions) - 1):
+    cumulative_xyz = np.zeros(3)
+    for i in range(len(actions)):
         # Get the two consecutive actions
         action1 = actions[i]
-        action2 = actions[i + 1]
+        # action2 = actions[i + 1]
 
         # Insert the original action
         # new_trajectory.append(action1)
@@ -47,36 +47,56 @@ def slow_down_trajectory(actions, factor=2):
         #     new_trajectory.append(interpolated_action)
         # new_trajectory.append(list(interpolated_action))
 
-        quat1 = R.from_rotvec(action1[3:6]).as_quat()
-        quat2 = R.from_rotvec(action2[3:6]).as_quat()
-        identity = R.from_quat([[0, 0, 0, 1]])
-        quat1 = R.from_quat(quat1)
-        # pdb.set_trace()
-        slerp = Slerp([0, 1], R.concatenate([identity, quat1]))
-        partial_rot = slerp([1 / factor])
-        scaled_quat = partial_rot.as_rotvec()[0]
-        interpolated_action[
-            3:6
-        ] = scaled_quat  # set the rotation part to the scaled quaternion
+        # quat1 = R.from_rotvec(action1[3:6]).as_quat()
+        # # quat2 = R.from_rotvec(action2[3:6]).as_quat()
+        # identity = R.from_quat([[0, 0, 0, 1]])
+        # quat1 = R.from_quat(quat1)
+        # # pdb.set_trace()
+        # slerp = Slerp([0, 1], R.concatenate([identity, quat1]))
+        # partial_rot = slerp([1 / factor])
+        # scaled_quat = partial_rot.as_rotvec()[0]
+        # interpolated_action[
+        #     3:6
+        # ] = scaled_quat  # set the rotation part to the scaled quaternion
         # interpolated_quats = interpolate_relative_rotations([quat1, quat2], num_steps_between=factor)
         # convert back to rotation vector
         # interpolated_quats = R.from_quat(interpolated_quats).as_rotvec
         # # convert to numpy array
         # interpolated_quats = np.array(interpolated_quats)
         # pdb.set_trace()
-        for _ in range(factor - 1):  # Insert (factor-1) interpolated actions
+        cumulative_action = np.zeros_like(interpolated_action)
+        for _ in range(factor):  # Insert (factor-1) interpolated actions
             # tmp_interpolated_action = interpolated_action
             # # set the rotation part to the interpolated quaternion
             # tmp_interpolated_action[3:6] = interpolated_quats[_]
+            if sum(np.abs(interpolated_action[:3])) < 0.01:
+                # add bit forward motion to x and y
+                tmp_interpolated_action = np.copy(interpolated_action)
+                tmp_interpolated_action[0] += 0.01
+                tmp_interpolated_action[1] += 0.01
+                interpolated_action = tmp_interpolated_action
             # new_trajectory.append(tmp_interpolated_action)
-            new_trajectory.append(interpolated_action)
+            if cumulative_xyz[2] < -26 and i < len(actions)/2:
+                import copy
+                tmp_interpolated_action = copy.deepcopy(interpolated_action)
+                tmp_interpolated_action[2] = 0
+                new_trajectory.append(tmp_interpolated_action)
+                cumulative_action += tmp_interpolated_action
+                cumulative_xyz += tmp_interpolated_action[:3]
+            else:
+                new_trajectory.append(interpolated_action)
+                cumulative_action += interpolated_action
+                cumulative_xyz += interpolated_action[:3]
+            print("cumulative_xyz", cumulative_xyz)
             # Identity rotation (no rotation)
+        # the final relative action added should be the initial action minus the cumulative action to account for the numerical error
+        # new_trajectory.append(action1 - cumulative_action)
 
         # pdb.set_trace()
         # new_trajectory.extend(list(interpolated_quats))
 
     # Append the last action
-    new_trajectory.append(actions[-1])
+    # new_trajectory.append(actions[-1])
 
     # Compute relative actions (difference between consecutive steps)
     # new_trajectory = [new_trajectory[i+1] - new_trajectory[i] for i in range(len(new_trajectory) - 1)]
@@ -84,7 +104,6 @@ def slow_down_trajectory(actions, factor=2):
     # pdb.set_trace()
 
     return np.array(new_trajectory)
-
 
 def extract_trajectory(
     env,
@@ -112,7 +131,7 @@ def extract_trajectory(
     original_actions = actions.copy()  # keep original actions for later use
     arm_actions = actions[:, :7]
     # pdb.set_trace()
-    slowed_trajectory = slow_down_trajectory(arm_actions, factor=5)
+    slowed_trajectory = slow_down_trajectory(arm_actions, factor=2)
     # stack [0,0,0,0,-1] for the dimension of the new slowed trajectory
     zero_base = np.stack([[0, 0, 0, 0, -1]] * slowed_trajectory.shape[0], axis=0)
     slowed_trajectory = np.concatenate(
@@ -808,7 +827,7 @@ def dataset_states_to_obs_multiprocessing(args):
                     :-5
                 ] + "_gentex_im{}.hdf5".format(image_suffix)
             else:
-                output_name = os.path.basename(args.dataset)[:-5] + "_im{}.hdf5".format(
+                output_name = os.path.basename(args.dataset)[:-5] + "_slow_im{}.hdf5".format(
                     image_suffix
                 )
 
