@@ -1,6 +1,6 @@
 # RoboCasa-v0.2 DAgger
 
-This is a DAgger-ready fork of **Robocasa v0.2** [10/31/2024]: using RoboSuite `v1.5` as the backend [**[Paper]**](https://robocasa.ai/assets/robocasa_rss24.pdf). 
+This is a DAgger-ready fork of [**Robocasa v0.2**](https://github.com/robocasa/robocasa) [10/31/2024]: using RoboSuite `v1.5` as the backend [**[Paper]**](https://robocasa.ai/assets/robocasa_rss24.pdf). 
 
 -------
 ## Key DAgger updates
