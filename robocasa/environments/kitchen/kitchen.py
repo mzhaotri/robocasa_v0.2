@@ -243,7 +243,6 @@ class Kitchen(ManipulationEnv, metaclass=KitchenEnvMeta):
         translucent_robot=False,
         randomize_cameras=False,
     ):
-        print("init controller_configs", controller_configs)
 
         self.init_robot_base_pos = init_robot_base_pos
 

@@ -365,8 +365,7 @@ def gather_human_only_dagger_demonstrations_as_hdf5(
             including controller and robot info
     """
 
-    hdf5_path = os.path.join(out_dir, "human_only_demo.hdf5")
-    print("Saving hdf5 to", hdf5_path)
+    hdf5_path = os.path.join(out_dir, "demonstrations_human_interventions_only.hdf5")
     f = h5py.File(hdf5_path, "w")
 
     # store some metadata in the attributes of one group
@@ -376,7 +375,6 @@ def gather_human_only_dagger_demonstrations_as_hdf5(
     env_name = None  # will get populated at some point
 
     for ep_directory in os.listdir(directory):
-        # print("Processing {} ...".format(ep_directory))
         if (excluded_episodes is not None) and (ep_directory in excluded_episodes):
             print("\tExcluding this episode!", ep_directory)
             continue
@@ -389,7 +387,6 @@ def gather_human_only_dagger_demonstrations_as_hdf5(
         observations = []
         dones = []
         rewards = []
-        # success = False
 
         for state_file in sorted(glob(state_paths)):
             # [len(np.load(state_file, allow_pickle=True)["states"]) for state_file in sorted(glob(state_paths))]
@@ -406,10 +403,8 @@ def gather_human_only_dagger_demonstrations_as_hdf5(
 
                 actions.append(ai["actions"])
                 acting_agents.append(ai["dagger_acting_agent"])
-                # if ai['dagger_acting_agent']
                 if "actions_abs" in ai:
                     actions_abs.append(ai["actions_abs"])
-            # success = success or dic["successful"]
 
         # convert list of dict to dict of list for obs dictionaries (for convenient writes to hdf5 dataset)
         observations = TensorUtils.list_of_flat_dict_to_dict_of_list(observations)
@@ -421,7 +416,6 @@ def gather_human_only_dagger_demonstrations_as_hdf5(
         if len(states) == 0:
             continue
 
-        # print("Demonstration is successful and has been saved")
         # Delete the last state. This is because when the DataCollector wrapper
         # recorded the states and actions, the states were recorded AFTER playing that action,
         # so we end up with an extra state at the end.
@@ -432,8 +426,7 @@ def gather_human_only_dagger_demonstrations_as_hdf5(
         segment_idx = -1
         segment_idx_to_start_end = {}
         segment_idx_to_data = {}
-        # pdb.set_trace()
-        # try:
+
         for i in range(0, len(acting_agents)):
             actor = acting_agents[i]
             if i == 0 and actor == "human":
@@ -442,7 +435,6 @@ def gather_human_only_dagger_demonstrations_as_hdf5(
                 segment_idx_to_data[segment_idx] = {}
                 segment_idx_to_start_end[segment_idx]["start"] = i
             elif i > 0 and actor == "human" and acting_agents[i - 1] != "human":
-                # pdb.set_trace()
                 segment_idx += 1
                 segment_idx_to_start_end[segment_idx] = {}
                 segment_idx_to_data[segment_idx] = {}
@@ -459,7 +451,6 @@ def gather_human_only_dagger_demonstrations_as_hdf5(
                     for k in observations
                 }
 
-                # for key in segmented_obs, if 'image' in key, flip image upside down
                 for key in segmented_obs:
                     if "image" in key:
                         for j in range(len(segmented_obs[key])):
@@ -504,7 +495,6 @@ def gather_human_only_dagger_demonstrations_as_hdf5(
                     ]
                     for k in observations
                 }
-                # for key in segmented_obs, if 'image' in key, flip image upside down
                 for key in segmented_obs:
                     if "image" in key:
                         for j in range(len(segmented_obs[key])):
@@ -618,29 +608,45 @@ def gather_single_human_only_dagger_demonstrations_as_hdf5(
     directory, out_dir, env_info, savefilename, excluded_episodes=None
 ):
     """
-    Gathers the demonstrations saved in @directory into a
-    single hdf5 file.
-    The strucure of the hdf5 file is as follows.
-    data (group)
-        date (attribute) - date of collection
-        time (attribute) - time of collection
-        repository_version (attribute) - repository version used during collection
-        env (attribute) - environment name on which demos were collected
-        demo1 (group) - every demonstration has a group
-            model_file (attribute) - model xml string for demonstration
-            states (dataset) - flattened mujoco states
-            actions (dataset) - actions applied during demonstration
-        demo2 (group)
-        ...
+    Gathers DAgger demonstrations saved in @directory into a single hdf5 file,
+    keeping only the timesteps where a human was the acting agent.
+
+    Each full rollout may contain interleaved segments of autonomous policy
+    execution and human intervention. This function parses the per-timestep
+    `dagger_acting_agent` field and extracts contiguous human-only segments,
+    writing each segment as a separate demo group. This is the intervention-only
+    saving mode: the resulting dataset contains only corrective human behavior,
+    with no robot-policy timesteps included.
+
+    The structure of the output hdf5 file is as follows:
+        data (group)
+            date (attribute) - date of collection
+            time (attribute) - time of collection
+            robocasa_version (attribute) - robocasa version used during collection
+            robosuite_version (attribute) - robosuite version used during collection
+            mujoco_version (attribute) - mujoco version used during collection
+            env (attribute) - environment name on which demos were collected
+            demo_1 (group) - one group per extracted human-intervention segment
+                model_file (attribute) - model xml string for the episode
+                ep_meta (attribute) - episode metadata json (if available)
+                states (dataset) - flattened mujoco states for the segment
+                actions (dataset) - actions taken by the human during the segment
+                actions_abs (dataset) - absolute actions (if recorded)
+                obs/<key> (dataset) - per-modality observations for the segment
+            demo_2 (group)
+            ...
+
     Args:
-        directory (str): Path to the directory containing raw demonstrations.
-        out_dir (str): Path to where to store the hdf5 file.
+        directory (str): Path to the directory containing raw per-episode folders,
+            each with state_*.npz files and a model.xml.
+        out_dir (str): Directory where the output hdf5 file will be written.
         env_info (str): JSON-encoded string containing environment information,
-            including controller and robot info
+            including controller and robot info.
+        savefilename (str): Name (without extension) for the output hdf5 file.
+        excluded_episodes (list, optional): Episode folder names to skip.
     """
 
     hdf5_path = os.path.join(out_dir, f"{savefilename}.hdf5")
-    print("Saving hdf5 to", hdf5_path)
     f = h5py.File(hdf5_path, "w")
 
     # store some metadata in the attributes of one group
@@ -650,7 +656,6 @@ def gather_single_human_only_dagger_demonstrations_as_hdf5(
     env_name = None  # will get populated at some point
 
     for ep_directory in os.listdir(directory):
-        # print("Processing {} ...".format(ep_directory))
         if (excluded_episodes is not None) and (ep_directory in excluded_episodes):
             print("\tExcluding this episode!", ep_directory)
             continue
@@ -663,10 +668,8 @@ def gather_single_human_only_dagger_demonstrations_as_hdf5(
         observations = []
         dones = []
         rewards = []
-        # success = False
 
         for state_file in sorted(glob(state_paths)):
-            # [len(np.load(state_file, allow_pickle=True)["states"]) for state_file in sorted(glob(state_paths))]
             dic = np.load(state_file, allow_pickle=True)
             env_name = str(dic["env"])
 
@@ -680,10 +683,8 @@ def gather_single_human_only_dagger_demonstrations_as_hdf5(
 
                 actions.append(ai["actions"])
                 acting_agents.append(ai["dagger_acting_agent"])
-                # if ai['dagger_acting_agent']
                 if "actions_abs" in ai:
                     actions_abs.append(ai["actions_abs"])
-            # success = success or dic["successful"]
 
         # convert list of dict to dict of list for obs dictionaries (for convenient writes to hdf5 dataset)
         observations = TensorUtils.list_of_flat_dict_to_dict_of_list(observations)
@@ -695,7 +696,6 @@ def gather_single_human_only_dagger_demonstrations_as_hdf5(
         if len(states) == 0:
             continue
 
-        # print("Demonstration is successful and has been saved")
         # Delete the last state. This is because when the DataCollector wrapper
         # recorded the states and actions, the states were recorded AFTER playing that action,
         # so we end up with an extra state at the end.
@@ -706,7 +706,6 @@ def gather_single_human_only_dagger_demonstrations_as_hdf5(
         segment_idx = -1
         segment_idx_to_start_end = {}
         segment_idx_to_data = {}
-        # pdb.set_trace()
         # try:
         for i in range(0, len(acting_agents)):
             actor = acting_agents[i]
@@ -733,7 +732,6 @@ def gather_single_human_only_dagger_demonstrations_as_hdf5(
                     for k in observations
                 }
 
-                # for key in segmented_obs, if 'image' in key, flip image upside down
                 for key in segmented_obs:
                     if "image" in key:
                         for j in range(len(segmented_obs[key])):
@@ -813,10 +811,7 @@ def gather_single_human_only_dagger_demonstrations_as_hdf5(
                             "start"
                         ] : segment_idx_to_start_end[segment_idx]["end"]
                     ]
-        # except Exception as e:
-        #     pdb.set_trace()
 
-        # pdb.set_trace()
         if len(segment_idx_to_data) > 0:
             for seg_idx in segment_idx_to_data:
                 observations = segment_idx_to_data[seg_idx]["observations"]
@@ -856,7 +851,6 @@ def gather_single_human_only_dagger_demonstrations_as_hdf5(
                 ep_data_grp.create_dataset("dones", data=np.array(dones))
                 ep_data_grp.create_dataset("rewards", data=np.array(rewards))
                 if len(actions_abs) > 0:
-                    print(np.array(actions_abs).shape)
                     ep_data_grp.create_dataset(
                         "actions_abs", data=np.array(actions_abs)
                     )
@@ -892,29 +886,46 @@ def gather_single_combined_demonstrations_as_hdf5(
     directory, out_dir, env_info, savefilename, excluded_episodes=None
 ):
     """
-    Gathers the demonstrations saved in @directory into a
-    single hdf5 file.
-    The strucure of the hdf5 file is as follows.
-    data (group)
-        date (attribute) - date of collection
-        time (attribute) - time of collection
-        repository_version (attribute) - repository version used during collection
-        env (attribute) - environment name on which demos were collected
-        demo1 (group) - every demonstration has a group
-            model_file (attribute) - model xml string for demonstration
-            states (dataset) - flattened mujoco states
-            actions (dataset) - actions applied during demonstration
-        demo2 (group)
-        ...
+    Gathers DAgger demonstrations saved in @directory into a single hdf5 file,
+    preserving full rollouts with both human and robot-policy timesteps.
+
+    Unlike the human-only variant, this function retains the entire episode
+    without segmenting by acting agent. Each timestep's acting agent is encoded
+    as a binary flag (1=human, 0=robot) in the `acting_agents` dataset, allowing
+    downstream training to weight or filter timesteps as needed. This is the
+    full-rollout saving mode: it captures blended behavior across the complete
+    episode, including autonomous policy segments between interventions.
+
+    The structure of the output hdf5 file is as follows:
+        data (group)
+            date (attribute) - date of collection
+            time (attribute) - time of collection
+            robocasa_version (attribute) - robocasa version used during collection
+            robosuite_version (attribute) - robosuite version used during collection
+            mujoco_version (attribute) - mujoco version used during collection
+            env (attribute) - environment name on which demos were collected
+            demo_1 (group) - one group per full rollout episode
+                model_file (attribute) - model xml string for the episode
+                ep_meta (attribute) - episode metadata json (if available)
+                states (dataset) - flattened mujoco states for the full rollout
+                actions (dataset) - actions for the full rollout
+                actions_abs (dataset) - absolute actions (if recorded)
+                acting_agents (dataset) - binary array, 1=human 0=robot, per timestep
+                obs/<key> (dataset) - per-modality observations for the full rollout
+            demo_2 (group)
+            ...
+
     Args:
-        directory (str): Path to the directory containing raw demonstrations.
-        out_dir (str): Path to where to store the hdf5 file.
+        directory (str): Path to the directory containing raw per-episode folders,
+            each with state_*.npz files and a model.xml.
+        out_dir (str): Directory where the output hdf5 file will be written.
         env_info (str): JSON-encoded string containing environment information,
-            including controller and robot info
+            including controller and robot info.
+        savefilename (str): Name (without extension) for the output hdf5 file.
+        excluded_episodes (list, optional): Episode folder names to skip.
     """
 
     hdf5_path = os.path.join(out_dir, f"{savefilename}.hdf5")
-    print("Saving hdf5 to", hdf5_path)
     f = h5py.File(hdf5_path, "w")
 
     # store some metadata in the attributes of one group
@@ -924,9 +935,7 @@ def gather_single_combined_demonstrations_as_hdf5(
     env_name = None  # will get populated at some point
 
     for ep_directory in os.listdir(directory):
-        # print("Processing {} ...".format(ep_directory))
         if (excluded_episodes is not None) and (ep_directory in excluded_episodes):
-            # print("\tExcluding this episode!")
             continue
 
         state_paths = os.path.join(directory, ep_directory, "state_*.npz")
@@ -936,9 +945,7 @@ def gather_single_combined_demonstrations_as_hdf5(
         observations = []
         dones = []
         rewards = []
-
-        # success = False
-
+        acting_agents = []
         for state_file in sorted(glob(state_paths)):
             dic = np.load(state_file, allow_pickle=True)
             env_name = str(dic["env"])
@@ -949,9 +956,9 @@ def gather_single_combined_demonstrations_as_hdf5(
             rewards.extend(dic["rewards"])
             for ai in dic["action_infos"]:
                 actions.append(ai["actions"])
+                acting_agents.append((1 if ai["dagger_acting_agent"].lower()=="human" else 0))
                 if "actions_abs" in ai:
                     actions_abs.append(ai["actions_abs"])
-            # success = success or dic["successful"]
 
         # convert list of dict to dict of list for obs dictionaries (for convenient writes to hdf5 dataset)
         observations = TensorUtils.list_of_flat_dict_to_dict_of_list(observations)
@@ -970,10 +977,7 @@ def gather_single_combined_demonstrations_as_hdf5(
         if len(states) == 0:
             continue
 
-        # # Add only the successful demonstration to dataset
-        # if success:
 
-        # print("Demonstration is successful and has been saved")
         # Delete the last state. This is because when the DataCollector wrapper
         # recorded the states and actions, the states were recorded AFTER playing that action,
         # so we end up with an extra state at the end.
@@ -1003,6 +1007,8 @@ def gather_single_combined_demonstrations_as_hdf5(
                 data=np.array(observations[k]),
                 compression="gzip",
             )
+
+        ep_data_grp.create_dataset("acting_agents", data=np.array(acting_agents))
         ep_data_grp.create_dataset("states", data=np.array(states))
         ep_data_grp.create_dataset("actions", data=np.array(actions))
         ep_data_grp.create_dataset("dones", data=np.array(dic["dones"]))
@@ -1010,10 +1016,6 @@ def gather_single_combined_demonstrations_as_hdf5(
         if len(actions_abs) > 0:
             print(np.array(actions_abs).shape)
             ep_data_grp.create_dataset("actions_abs", data=np.array(actions_abs))
-
-        # else:
-        #     pass
-        #     # print("Demonstration is unsuccessful and has NOT been saved")
 
     print("{} successful demos so far".format(num_eps))
 

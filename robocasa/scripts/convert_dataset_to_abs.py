@@ -21,20 +21,9 @@ import robomimic.utils.file_utils as FileUtils
 import robocasa.utils.env_utils as EnvUtils
 from scipy.spatial.transform import Rotation
 
-# from robocasa.scripts.playback_dataset import get_env_metadata_from_dataset, get_env_from_dataset
 from robomimic.config import config_factory
-import pdb
-import robosuite
-
-# import robocasa
-# from robocasa.utils.env_utils import create_env, run_random_rollouts
 import sys
-
-# import os
 import pathlib
-
-# ROOT_DIR = str(pathlib.Path(__file__).parent.parent.parent)
-# sys.path.append(ROOT_DIR)
 
 import multiprocessing
 import os
@@ -284,9 +273,6 @@ def reset_to(env, state):
 
         env.reset_from_xml_string(xml)
         env.sim.reset()
-        # hide teleop visualization after restoring from model
-        # env.sim.model.site_rgba[env.eef_site_id] = np.array([0., 0., 0., 0.])
-        # env.sim.model.site_rgba[env.eef_cylinder_id] = np.array([0., 0., 0., 0.])
     if "states" in state:
         env.sim.set_state_from_flattened(state["states"])
         env.sim.forward()
@@ -300,9 +286,6 @@ def reset_to(env, state):
         # later versions renamed this to update_state
         env.update_state()
 
-    # if should_ret:
-    #     # only return obs if we've done a forward call - otherwise the observations will be garbage
-    #     return get_observation()
     return None
 
 
@@ -337,16 +320,6 @@ def playback_dataset(args):
 
     # create environment only if not playing back with observations
     if not args.use_obs:
-        # # need to make sure ObsUtils knows which observations are images, but it doesn't matter
-        # # for playback since observations are unused. Pass a dummy spec here.
-        # dummy_spec = dict(
-        #     obs=dict(
-        #             low_dim=["robot0_eef_pos"],
-        #             rgb=[],
-        #         ),
-        # )
-        # initialize_obs_utils_with_obs_specs(obs_modality_specs=dummy_spec)
-
         env_meta = get_env_metadata_from_dataset(dataset_path=args.dataset)
         if args.use_abs_actions:
             env_meta["env_kwargs"]["controller_configs"][
@@ -369,9 +342,6 @@ def playback_dataset(args):
             )
 
         env = robosuite.make(**env_kwargs)
-        import pdb
-
-        pdb.set_trace()
 
     f = h5py.File(args.dataset, "r")
 
@@ -456,43 +426,8 @@ def playback_dataset(args):
 
 
 def get_env_from_dataset(dataset):
-    # args = get_playback_args()
-    # # some arg checking
-    # write_video = args.render is not True
-    # if args.video_path is None:
-    #     args.video_path = args.dataset.split(".hdf5")[0] + ".mp4"
-    #     if args.use_actions:
-    #         args.video_path = args.dataset.split(".hdf5")[0] + "_use_actions.mp4"
-    #     elif args.use_abs_actions:
-    #         args.video_path = args.dataset.split(".hdf5")[0] + "_use_abs_actions.mp4"
-    # assert not (args.render and write_video)  # either on-screen or video but not both
-
-    # # Auto-fill camera rendering info if not specified
-    # if args.render_image_names is None:
-    #     # We fill in the automatic values
-    #     env_meta = get_env_metadata_from_dataset(dataset_path=args.dataset)
-    #     args.render_image_names = "robot0_agentview_center"
-
-    # if args.render:
-    #     # on-screen rendering can only support one camera
-    #     assert len(args.render_image_names) == 1
-
-    # if args.use_obs:
-    #     assert write_video, "playback with observations can only write to video"
-    #     assert (
-    #         not args.use_actions and not args.use_abs_actions
-    #     ), "playback with observations is offline and does not support action playback"
-
-    env = None
-
-    # create environment only if not playing back with observations
-    # if not args.use_obs:
-
     env_meta = get_env_metadata_from_dataset(dataset_path=dataset)
-    # if args.use_abs_actions:
-    env_meta["env_kwargs"]["controller_configs"][
-        "control_delta"
-    ] = False  # absolute action space
+    env_meta["env_kwargs"]["controller_configs"]["control_delta"] = False  # absolute action space
 
     env_kwargs = env_meta["env_kwargs"]
     env_kwargs["env_name"] = env_meta["env_name"]
@@ -500,14 +435,6 @@ def get_env_from_dataset(dataset):
     env_kwargs["renderer"] = "mjviewer"
     env_kwargs["has_offscreen_renderer"] = False
     env_kwargs["use_camera_obs"] = False
-
-    # if args.verbose:
-    #     print(
-    #         colored(
-    #             "Initializing environment for {}...".format(env_kwargs["env_name"]),
-    #             "yellow",
-    #         )
-    #     )
 
     env = robosuite.make(**env_kwargs)
     return env
@@ -651,28 +578,7 @@ class RobocasaAbsoluteActionConverter:
         env_kwargs["renderer"] = "mjviewer"
         env_kwargs["has_offscreen_renderer"] = False
         env_kwargs["use_camera_obs"] = False
-        # pdb.set_trace()
-        # env = get_env_from_dataset(dataset_path)
-        # change directories to robocasa
-        # get current directory
-        # curr_dir = os.getcwd()
-        # os.chdir(os.path.dirname('../../../robocasa/robocasa/scripts/'))
-
-        # env_kwargs={'env_name': 'CloseDrawer', 'robots': 'PandaMobile', 'controller_configs': {'type': 'OSC_POSE', 'input_max': 1, 'input_min': -1, 'output_max': [0.05, 0.05, 0.05, 0.5, 0.5, 0.5], 'output_min': [-0.05, -0.05, -0.05, -0.5, -0.5, -0.5], 'kp': 150, 'damping_ratio': 1, 'impedance_mode': 'fixed', 'kp_limits': [0, 300], 'damping_ratio_limits': [0, 10], 'position_limits': None, 'orientation_limits': None, 'uncouple_pos_ori': True, 'control_delta': True, 'interpolation': None, 'ramp_ratio': 0.2}, 'layout_ids': -1, 'style_ids': [0, 1, 2, 3, 4, 5, 6, 7, 8, 11], 'translucent_robot': False, 'obj_instance_split': 'A', 'has_renderer': False, 'renderer': 'mjviewer', 'has_offscreen_renderer': False, 'use_camera_obs': False}
-
-        # pdb.set_trace()
         env = robosuite.make(**env_kwargs)
-        # display robosuite path and version
-        # robosuite_path = robosuite.__file__
-        # robosuite_version = robosuite.__version__
-        # print(f"Robosuite path: {robosuite_path}")
-
-        # env = EnvUtils.create_env_from_metadata(env_meta=env_meta,
-        #     render=False,
-        #     render_offscreen=False,
-        #     use_image_obs=False,
-        # )
-        # pdb.set_trace()
         assert len(env.robots) in (1, 2)
         abs_env_kwargs = abs_env_meta["env_kwargs"]
         abs_env_kwargs["env_name"] = abs_env_meta["env_name"]
@@ -681,15 +587,6 @@ class RobocasaAbsoluteActionConverter:
         abs_env_kwargs["has_offscreen_renderer"] = False
         abs_env_kwargs["use_camera_obs"] = False
         abs_env = robosuite.make(**env_kwargs)
-
-        # abs_env = EnvUtils.create_env_from_metadata(
-        #     env_meta=abs_env_meta,
-        #     render=False,
-        #     render_offscreen=False,
-        #     use_image_obs=False,
-        # )
-        # pdb.set_trace()
-        # assert not abs_env.robots[0].controller.use_delta
 
         self.env = env
         self.abs_env = abs_env
@@ -710,7 +607,6 @@ class RobocasaAbsoluteActionConverter:
         print("states.shape = {}".format(states.shape))
         print("actions.shape = {}".format(actions.shape))
         print("actions = {}".format(actions))
-        # pdb.set_trace()
         stacked_actions = actions.reshape(*actions.shape[:-1], -1, 12)
 
         env = self.env
@@ -934,5 +830,4 @@ def main(input, output, eval_dir, num_workers):
 
 
 if __name__ == "__main__":
-    # pdb.set_trace()
     main()
