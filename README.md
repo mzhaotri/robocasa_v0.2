@@ -5,7 +5,7 @@ This is a DAgger-ready fork of **Robocasa v0.2** [10/31/2024]: using RoboSuite `
 -------
 ## Key DAgger updates
 Two saving modes are supported:
-- **Intervention-only saving**: only the timesteps where the human intervened (i.e., overrode the robot policy) are saved. This makes it easy to inspect where and how often the policy fails, and to build datasets focused on corrective behavior.
+- **Intervention-only saving**: only the timesteps where the human intervened (i.e., corrected the robot policy) are saved. This makes it easy to inspect where and how often the policy fails, and to build datasets focused on corrective behavior.
 - **Full-rollout saving**: the entire episode is saved regardless of intervention frequency. This captures blended behavior — segments of autonomous policy execution interleaved with human corrections — which is useful for training on the full distribution of states the robot encounters during deployment, with markers denoting acting agents.
 
 -------
