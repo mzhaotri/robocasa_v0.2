@@ -10,7 +10,7 @@ Two saving modes are supported:
 
 -------
 ## Installation
-For standalone installation:
+For standalone installation of Robocasa, follow the instructions associated with this release. For DAgger diffusion policy setup, this install is included in the README instructions [here](https://github.com/mzhaotri/DAgger_diffusion_policy):
 1. Set up conda environment:
 
    ```sh
@@ -23,7 +23,7 @@ For standalone installation:
 3. Clone and setup robosuite dependency (**important: use the master branch!**):
 
    ```sh
-   git clone https://github.com/ARISE-Initiative/robosuite
+   git clone https://github.com/mzhaotri/robocasa_v0.2.git
    cd robosuite
    pip install -e .
    ```
